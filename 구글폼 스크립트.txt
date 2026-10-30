@@ -1,0 +1,125 @@
+// ============================================================
+//  설정 부분 (여기만 수정하면 됩니다)
+// ============================================================
+
+// 폼 응답이 쌓이는 시트 이름
+const SHEET_NAME = '이벤트응모';
+
+// 새 응모 알림을 받을 담당자 이메일 주소 (꼭 본인 주소로 바꾸세요)
+const MANAGER_EMAIL = 'manager@example.com';
+
+// 응모자에게 보낼 접수 확인 메일 제목
+const CONFIRM_SUBJECT = '[접수완료] 이벤트 응모가 접수되었습니다';
+
+// 담당자에게 보낼 알림 메일 제목
+const NOTIFY_SUBJECT = '[알림] 새 이벤트 응모가 들어왔습니다';
+
+
+// ============================================================
+//  메인 함수: 폼 응답이 들어오면 트리거가 자동으로 실행합니다
+// ============================================================
+
+// 폼 응답이 들어올 때 자동 실행되는 함수 (e 에는 새로 들어온 응답 정보가 담겨 옵니다)
+function onFormSubmit(e) {
+
+  // 새로 들어온 응답이 기록된 행 범위를 가져옵니다.
+  const range = e.range;
+
+  // 그 범위가 속한 시트를 가져옵니다.
+  const sheet = range.getSheet();
+
+  // 응답이 들어온 시트가 '이벤트응모'가 아니면 아무것도 하지 않고 종료합니다.
+  if (sheet.getName() !== SHEET_NAME) {
+    // 어떤 시트였는지 기록만 남깁니다.
+    Logger.log('대상 시트가 아니라서 종료합니다: ' + sheet.getName());
+    // 함수를 끝냅니다.
+    return;
+  }
+
+  // 새 응답이 기록된 행 번호를 구합니다.
+  const row = range.getRow();
+
+  // 그 행의 A열(1)부터 F열까지 6개 값을 한 번에 읽어옵니다. (2차원 배열이라 [0]으로 첫 줄을 꺼냄)
+  const values = sheet.getRange(row, 1, 1, 6).getValues()[0];
+
+  // B열 값: 이메일 (배열은 0부터 세므로 B열은 1번)
+  const email = values[1];
+
+  // C열 값: 이름 (2번)
+  const name = values[2];
+
+  // D열 값: 관심분야 (3번)
+  const interest = values[3];
+
+  // F열 값: 수신동의 (5번) - 앞뒤 공백을 지워서 비교 실수를 줄입니다.
+  const agree = String(values[5]).trim();
+
+  // 수신동의가 '동의'가 아니면 응모자에게는 메일을 보내지 않습니다.
+  if (agree !== '동의') {
+    // 기록을 남깁니다.
+    Logger.log(row + '행: 수신동의가 아니어서 응모자 메일은 보내지 않습니다. (' + agree + ')');
+  }
+  // 수신동의가 '동의'이면
+  else {
+
+    // 이메일 주소가 비어 있으면 보낼 수 없습니다.
+    if (email === '') {
+      // 기록을 남깁니다.
+      Logger.log(row + '행: 이메일 주소가 비어 있어서 응모자 메일을 건너뜁니다.');
+    }
+    // 이메일 주소가 있으면
+    else {
+
+      // 응모자에게 보낼 본문을 만듭니다. (C열 이름과 D열 관심분야를 넣습니다)
+      const confirmBody =
+        name + '님, 안녕하세요.\n\n' +
+        '이벤트 응모가 정상적으로 접수되었습니다.\n\n' +
+        '▶ 이름: ' + name + '\n' +
+        '▶ 관심분야: ' + interest + '\n\n' +
+        '참여해 주셔서 감사합니다.';
+
+      // 응모자(B열 주소)에게 접수 확인 메일을 보냅니다.
+      MailApp.sendEmail(email, CONFIRM_SUBJECT, confirmBody);
+
+      // 기록을 남깁니다.
+      Logger.log(row + '행: ' + name + ' (' + email + ') 에게 접수 확인 메일 발송 완료');
+    }
+  }
+
+  // 담당자에게 보낼 알림 본문을 만듭니다. (수신동의 여부와 상관없이 항상 보냅니다)
+  const notifyBody =
+    '새 이벤트 응모가 들어왔습니다.\n\n' +
+    '▶ 행 번호: ' + row + '\n' +
+    '▶ 이름: ' + name + '\n' +
+    '▶ 이메일: ' + email + '\n' +
+    '▶ 관심분야: ' + interest + '\n' +
+    '▶ 수신동의: ' + agree + '\n\n' +
+    '시트 링크: ' + SpreadsheetApp.getActiveSpreadsheet().getUrl();
+
+  // 담당자 주소로 알림 메일을 보냅니다.
+  MailApp.sendEmail(MANAGER_EMAIL, NOTIFY_SUBJECT, notifyBody);
+
+  // 기록을 남깁니다.
+  Logger.log(row + '행: 담당자(' + MANAGER_EMAIL + ') 에게 알림 발송 완료');
+}
+
+
+// ============================================================
+//  테스트용 함수: 트리거 없이 마지막 행으로 직접 실행해 볼 때 사용
+// ============================================================
+
+// 편집기에서 ▶ 실행 버튼으로 돌려볼 수 있는 테스트 함수
+function testOnFormSubmit() {
+
+  // '이벤트응모' 시트를 가져옵니다.
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+
+  // 데이터가 있는 마지막 행 번호를 구합니다.
+  const lastRow = sheet.getLastRow();
+
+  // 마지막 행을 "방금 들어온 응답"인 것처럼 꾸며서 e 객체를 만듭니다.
+  const fakeEvent = { range: sheet.getRange(lastRow, 1) };
+
+  // 메인 함수를 직접 호출합니다.
+  onFormSubmit(fakeEvent);
+}
