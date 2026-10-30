@@ -1,0 +1,117 @@
+// ============================================================
+//  설정 부분 (여기만 수정하면 됩니다)
+// ============================================================
+
+// 콘텐츠 일정이 들어 있는 시트 이름
+const CONTENT_SHEET_NAME = '콘텐츠일정';
+
+// 등록이 끝난 행에 기록할 글자
+const DONE_TEXT = '등록완료';
+
+
+// ============================================================
+//  메인 함수: 이 함수를 실행하세요
+// ============================================================
+
+// E열이 '등록완료'가 아닌 행을 골라 내 구글 캘린더에 종일 일정으로 만드는 함수
+function createCalendarEvents() {
+
+  // 현재 열려 있는 스프레드시트에서 '콘텐츠일정' 시트를 가져옵니다.
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONTENT_SHEET_NAME);
+
+  // 시트가 없으면 안내 메시지를 남기고 종료합니다.
+  if (sheet === null) {
+    // 실행 로그에 메시지를 남깁니다.
+    Logger.log("'" + CONTENT_SHEET_NAME + "' 시트를 찾을 수 없습니다. 시트 이름을 확인해 주세요.");
+    // 함수를 끝냅니다.
+    return;
+  }
+
+  // 내 구글 계정의 기본 캘린더를 가져옵니다.
+  const calendar = CalendarApp.getDefaultCalendar();
+
+  // 데이터가 있는 마지막 행 번호를 구합니다.
+  const lastRow = sheet.getLastRow();
+
+  // 마지막 행이 2보다 작으면 (제목행만 있으면) 처리할 데이터가 없습니다.
+  if (lastRow < 2) {
+    // 안내 메시지를 남깁니다.
+    Logger.log('처리할 데이터가 없습니다.');
+    // 함수를 끝냅니다.
+    return;
+  }
+
+  // 2행부터 마지막 행까지, A열(1)부터 5개 열(A~E)을 한 번에 읽어옵니다.
+  const data = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+
+  // 만든 일정 개수를 세는 변수입니다. (1씩 늘어나므로 let)
+  let createdCount = 0;
+
+  // 읽어온 데이터를 한 줄씩 반복합니다.
+  for (let i = 0; i < data.length; i++) {
+
+    // A열 값: 날짜 (배열은 0부터 세므로 A열은 0번)
+    const dateValue = data[i][0];
+
+    // B열 값: 채널 (1번)
+    const channel = data[i][1];
+
+    // C열 값: 제목 (2번)
+    const title = data[i][2];
+
+    // D열 값: 담당자 (3번)
+    const manager = data[i][3];
+
+    // E열 값: 상태 (4번) - 앞뒤 공백을 지워서 비교 실수를 줄입니다.
+    const status = String(data[i][4]).trim();
+
+    // 실제 시트에서의 행 번호 (데이터가 2행부터 시작하므로 i + 2)
+    const rowNumber = i + 2;
+
+    // 이미 '등록완료'인 행은 건너뜁니다.
+    if (status === DONE_TEXT) {
+      // 다음 행으로 넘어갑니다.
+      continue;
+    }
+
+    // 날짜가 비어 있으면 일정을 만들 수 없으므로 건너뜁니다.
+    if (dateValue === '') {
+      // 기록을 남깁니다.
+      Logger.log(rowNumber + '행: 날짜가 비어 있어서 건너뜁니다.');
+      // 다음 행으로 넘어갑니다.
+      continue;
+    }
+
+    // A열 값을 날짜 형식으로 바꿉니다.
+    const date = new Date(dateValue);
+
+    // 날짜로 바꿀 수 없는 값이면 (예: '미정' 같은 글자) 건너뜁니다.
+    if (isNaN(date.getTime())) {
+      // 기록을 남깁니다.
+      Logger.log(rowNumber + '행: 날짜 형식이 올바르지 않아 건너뜁니다. (' + dateValue + ')');
+      // 다음 행으로 넘어갑니다.
+      continue;
+    }
+
+    // 일정 제목을 만듭니다. 예: [인스타그램] 신제품 소개 영상
+    const eventTitle = '[' + channel + '] ' + title;
+
+    // 일정 설명을 만듭니다. (담당자를 넣습니다)
+    const description = '담당자: ' + manager;
+
+    // 내 캘린더에 종일 일정을 만듭니다. createAllDayEvent(제목, 날짜, 추가옵션)
+    calendar.createAllDayEvent(eventTitle, date, { description: description });
+
+    // 이 행의 E열(5번째 열)에 '등록완료'라고 기록합니다.
+    sheet.getRange(rowNumber, 5).setValue(DONE_TEXT);
+
+    // 만든 개수를 1 늘립니다.
+    createdCount++;
+
+    // 기록을 남깁니다.
+    Logger.log(rowNumber + '행: "' + eventTitle + '" 일정 등록 완료');
+  }
+
+  // 반복이 모두 끝나면 총 등록 개수를 기록합니다.
+  Logger.log('총 ' + createdCount + '건의 일정을 캘린더에 등록했습니다.');
+}
