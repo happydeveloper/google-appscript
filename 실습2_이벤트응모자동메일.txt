@@ -1,0 +1,85 @@
+/**
+ * 실습 2. 이벤트 응모 접수 자동 메일
+ * ------------------------------------------------------------
+ * 시트: '이벤트응모' (구글 폼 응답 연결, 1행 제목행)
+ *   B열 이메일 / C열 이름 / D열 관심분야 / F열 수신동의
+ * 기능: 폼 응답이 들어오면 자동 실행
+ *   - F열이 '동의'이면 응모자에게 접수 확인 메일 (이름·관심분야 포함)
+ *   - 담당자에게는 항상 새 응모 알림 메일
+ * 트리거: 실행할 함수 handleFormSubmit / 배포 Head /
+ *         이벤트 소스 '스프레드시트에서' / 이벤트 유형 '양식 제출 시'
+ * 테스트: 편집기에서는 testWithLastRow를 실행 (handleFormSubmit 직접 실행 X)
+ */
+
+// ==============================
+// ⚙️ 설정 영역
+// ==============================
+
+// 새 응모 알림을 받을 담당자 이메일 주소 (본인 주소로 바꿔서 사용)
+const MANAGER_EMAIL = 'your-email@gmail.com';
+
+// 응모자에게 보낼 접수 확인 메일 ({이름}, {관심분야} 자리에 실제 값이 들어갑니다)
+const CONFIRM_SUBJECT = '이벤트 응모가 접수되었습니다';
+const CONFIRM_BODY = '{이름}님, 안녕하세요.\n\n이벤트 응모가 정상적으로 접수되었습니다.\n선택하신 관심분야: {관심분야}\n\n참여해 주셔서 감사합니다.';
+
+
+// ==============================
+// 📝 폼 응답이 들어오면 자동 실행되는 함수 (트리거 연결용)
+// ==============================
+function handleFormSubmit(e) {
+  // 편집기에서 ▶로 직접 실행하면 e가 없으므로 안내만 남기고 멈춥니다
+  if (!e || !e.range) {
+    Logger.log('직접 실행됨: 이 함수는 폼 제출 시 자동 실행용입니다. 테스트는 testWithLastRow를 실행하세요.');
+    return;
+  }
+
+  // 방금 들어온 응답이 적힌 시트를 가져옵니다
+  const sheet = e.range.getSheet();
+  Logger.log('응답이 들어온 탭: ' + sheet.getName());
+
+  // '이벤트응모' 탭이 아니면 멈춥니다
+  if (sheet.getName() !== '이벤트응모') {
+    Logger.log("'이벤트응모' 탭이 아니라서 멈췄어요. 탭 이름을 확인하세요.");
+    return;
+  }
+
+  // 방금 들어온 행의 값을 읽어옵니다
+  const rowNumber = e.range.getRow();
+  const row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+  const email    = String(row[1]).trim(); // B열: 이메일
+  const name     = String(row[2]).trim(); // C열: 이름
+  const interest = String(row[3]).trim(); // D열: 관심분야
+  const consent  = String(row[5]).trim(); // F열: 수신동의
+  Logger.log('읽은 값 → 이메일: ' + email + ' / 이름: ' + name + ' / 관심분야: ' + interest + ' / 수신동의: ' + consent);
+
+  // ① 수신동의가 '동의'이고 이메일이 있을 때만 응모자에게 접수 확인 메일
+  if (consent === '동의' && email !== '') {
+    const body = CONFIRM_BODY.replace('{이름}', name).replace('{관심분야}', interest);
+    MailApp.sendEmail(email, CONFIRM_SUBJECT, body);
+    Logger.log('응모자 메일 발송 완료: ' + email);
+  } else {
+    Logger.log('응모자 메일은 보내지 않음 (수신동의: ' + consent + ')');
+  }
+
+  // ② 담당자에게는 항상 새 응모 알림
+  const managerBody =
+    '새 이벤트 응모가 들어왔습니다.\n\n' +
+    '이름: ' + name + '\n' +
+    '이메일: ' + email + '\n' +
+    '관심분야: ' + interest + '\n' +
+    '수신동의: ' + consent + '\n' +
+    '시트 위치: ' + rowNumber + '행';
+  MailApp.sendEmail(MANAGER_EMAIL, '[새 응모] ' + name + '님이 응모했습니다', managerBody);
+  Logger.log('담당자 알림 발송 완료: ' + MANAGER_EMAIL);
+}
+
+
+// ==============================
+// 🧪 테스트용 (편집기에서 직접 실행할 때는 이 함수를 선택)
+// ==============================
+// 시트의 마지막 행을 '방금 들어온 응답'처럼 가정하고 실행합니다
+function testWithLastRow() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('이벤트응모');
+  handleFormSubmit({ range: sheet.getRange(sheet.getLastRow(), 1) });
+}
