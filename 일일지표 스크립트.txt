@@ -1,0 +1,155 @@
+// ============================================================
+//  설정 부분 (여기만 수정하면 됩니다)
+// ============================================================
+
+// 데이터가 들어 있는 시트 이름
+const SHEET_NAME = '일일지표';
+
+// 요약 메일을 받을 내 주소 (비워두면 현재 로그인한 계정 주소로 자동 설정)
+const MY_EMAIL = '';
+
+// 메일 제목 앞부분 (뒤에 날짜가 자동으로 붙습니다)
+const MAIL_SUBJECT = '[일일지표 요약]';
+
+
+// ============================================================
+//  메인 함수: 이 함수를 실행하세요
+// ============================================================
+
+// '일일지표' 시트에서 가장 최근 날짜 행을 찾아 요약 메일을 보내는 함수
+function sendDailyReport() {
+
+  // 현재 열려 있는 스프레드시트에서 '일일지표' 시트를 가져옵니다.
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+
+  // 시트가 없으면 안내 메시지를 남기고 종료합니다.
+  if (sheet === null) {
+    // 실행 로그에 메시지를 남깁니다.
+    Logger.log("'" + SHEET_NAME + "' 시트를 찾을 수 없습니다. 시트 이름을 확인해 주세요.");
+    // 함수를 끝냅니다.
+    return;
+  }
+
+  // 데이터가 있는 마지막 행 번호를 구합니다.
+  const lastRow = sheet.getLastRow();
+
+  // 마지막 행이 2보다 작으면 (제목행만 있으면) 데이터가 없는 것이므로 종료합니다.
+  if (lastRow < 2) {
+    // 안내 메시지를 남깁니다.
+    Logger.log('날짜 데이터가 없어서 메일을 보내지 않고 종료합니다.');
+    // 함수를 끝냅니다.
+    return;
+  }
+
+  // 2행부터 마지막 행까지, A열(1)부터 6개 열(A~F)을 한 번에 읽어옵니다.
+  const data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+
+  // 가장 최근 날짜를 담을 변수입니다. (처음엔 없으므로 null, 바뀌므로 let)
+  let latestDate = null;
+
+  // 가장 최근 날짜가 있는 행의 데이터를 담을 변수입니다. (바뀌므로 let)
+  let latestRow = null;
+
+  // 읽어온 데이터를 한 줄씩 반복하며 가장 최근 날짜를 찾습니다.
+  for (let i = 0; i < data.length; i++) {
+
+    // A열 값: 날짜 (배열은 0부터 세므로 A열은 0번)
+    const cellValue = data[i][0];
+
+    // A열이 비어 있으면 날짜가 없는 행이므로 건너뜁니다.
+    if (cellValue === '') {
+      // 다음 행으로 넘어갑니다.
+      continue;
+    }
+
+    // A열 값을 날짜 형식으로 바꿉니다. (시트에서 날짜로 읽히면 그대로, 글자면 변환)
+    const date = new Date(cellValue);
+
+    // 날짜로 바꿀 수 없는 값이면 (예: '미정' 같은 글자) 건너뜁니다.
+    if (isNaN(date.getTime())) {
+      // 다음 행으로 넘어갑니다.
+      continue;
+    }
+
+    // 아직 비교할 날짜가 없거나, 지금 날짜가 더 최근이면
+    if (latestDate === null || date > latestDate) {
+      // 가장 최근 날짜를 갱신합니다.
+      latestDate = date;
+      // 그 행의 데이터도 함께 기억해 둡니다.
+      latestRow = data[i];
+    }
+  }
+
+  // 반복이 끝났는데도 날짜를 하나도 못 찾았으면 메일을 보내지 않고 종료합니다.
+  if (latestDate === null) {
+    // 안내 메시지를 남깁니다.
+    Logger.log('유효한 날짜 데이터가 하나도 없어서 메일을 보내지 않고 종료합니다.');
+    // 함수를 끝냅니다.
+    return;
+  }
+
+  // 찾은 행에서 각 열의 값을 꺼냅니다. (B열=1, C열=2, D열=3, E열=4, F열=5)
+  const visitors = Number(latestRow[1]);   // B열: 방문자수
+  const signups  = Number(latestRow[2]);   // C열: 신규가입
+  const orders   = Number(latestRow[3]);   // D열: 주문건수
+  const revenue  = Number(latestRow[4]);   // E열: 매출
+  const adCost   = Number(latestRow[5]);   // F열: 광고비
+
+  // 매출 대비 광고비 비율을 담을 변수입니다. (조건에 따라 바뀌므로 let)
+  let adRatioText = '';
+
+  // 매출이 0이면 나눌 수 없으므로 '계산 불가'로 표시합니다.
+  if (revenue === 0) {
+    // 안내 문구를 넣습니다.
+    adRatioText = '계산 불가 (매출 0)';
+  }
+  // 매출이 있으면
+  else {
+    // 광고비 ÷ 매출 × 100 을 계산하고 소수점 첫째 자리까지만 남깁니다.
+    adRatioText = (adCost / revenue * 100).toFixed(1) + '%';
+  }
+
+  // 날짜를 '2025-01-15' 형식의 글자로 바꿉니다. (한국 시간 기준)
+  const dateText = Utilities.formatDate(latestDate, 'Asia/Seoul', 'yyyy-MM-dd');
+
+  // 메일 제목을 만듭니다. 예: [일일지표 요약] 2025-01-15
+  const subject = MAIL_SUBJECT + ' ' + dateText;
+
+  // 메일 본문을 만듭니다. (addComma 함수로 숫자에 천 단위 쉼표를 넣습니다)
+  const body =
+    dateText + ' 일일지표 요약입니다.\n\n' +
+    '▶ 방문자수: ' + addComma(visitors) + '명\n' +
+    '▶ 신규가입: ' + addComma(signups) + '명\n' +
+    '▶ 주문건수: ' + addComma(orders) + '건\n' +
+    '▶ 매출: ' + addComma(revenue) + '원\n' +
+    '▶ 광고비: ' + addComma(adCost) + '원\n' +
+    '▶ 매출 대비 광고비 비율: ' + adRatioText + '\n\n' +
+    '시트 링크: ' + SpreadsheetApp.getActiveSpreadsheet().getUrl();
+
+  // 받는 사람 주소를 담을 변수입니다. (비어 있으면 바뀌므로 let)
+  let recipient = MY_EMAIL;
+
+  // 설정에 주소가 비어 있으면 현재 로그인한 구글 계정 주소를 사용합니다.
+  if (recipient === '') {
+    // 내 계정 주소를 가져옵니다.
+    recipient = Session.getActiveUser().getEmail();
+  }
+
+  // 메일을 보냅니다. sendEmail(받는사람, 제목, 본문)
+  MailApp.sendEmail(recipient, subject, body);
+
+  // 완료 기록을 남깁니다.
+  Logger.log(dateText + ' 요약 메일을 ' + recipient + ' 에게 발송했습니다.');
+}
+
+
+// ============================================================
+//  보조 함수: 숫자에 천 단위 쉼표를 넣어 주는 함수
+// ============================================================
+
+// 1234567 → '1,234,567' 처럼 바꿔 주는 함수
+function addComma(num) {
+
+  // 숫자를 반올림해서 글자로 바꾼 뒤, 세 자리마다 쉼표를 넣습니다.
+  return String(Math.round(num)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
