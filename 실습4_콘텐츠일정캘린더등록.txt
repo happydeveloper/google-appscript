@@ -1,0 +1,81 @@
+/**
+ * 실습 4. 콘텐츠 일정 구글 캘린더 등록
+ * ------------------------------------------------------------
+ * 시트: '콘텐츠일정' (1행 제목행)
+ *   A열 날짜 / B열 채널 / C열 제목 / D열 담당자 / E열 상태
+ * 기능: E열이 '등록완료'가 아닌 행을 내 구글 캘린더에 종일 일정으로 등록
+ *   - 일정 제목: [채널] 콘텐츠 제목
+ *   - 일정 설명: 담당자
+ *   - 등록 후 E열에 '등록완료' 기록 (실패 시 '등록실패: 이유')
+ * 실행: 편집기에서 콘텐츠일정등록 선택 후 ▶ 직접 실행
+ */
+
+// ==============================
+// 📅 콘텐츠 일정을 구글 캘린더에 종일 일정으로 등록하기
+// ==============================
+function 콘텐츠일정등록() {
+  // '콘텐츠일정' 시트를 가져옵니다
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('콘텐츠일정');
+  if (!sheet) {
+    SpreadsheetApp.getUi().alert("'콘텐츠일정' 시트를 찾을 수 없어요.");
+    return;
+  }
+
+  // 내 기본 구글 캘린더를 가져옵니다
+  const calendar = CalendarApp.getDefaultCalendar();
+
+  // 시트의 모든 데이터를 한 번에 읽어옵니다
+  const data = sheet.getDataRange().getValues();
+
+  let successCount = 0; // 등록 성공 수
+  let failCount = 0;    // 등록 실패 수
+
+  // 1행은 제목행이므로 2행(i = 1)부터 확인합니다
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+
+    const dateCell = row[0];                  // A열: 날짜
+    const channel  = String(row[1]).trim();   // B열: 채널
+    const title    = String(row[2]).trim();   // C열: 제목
+    const owner    = String(row[3]).trim();   // D열: 담당자
+    const status   = String(row[4]).trim();   // E열: 상태
+
+    // 이미 '등록완료'인 행은 건너뜁니다 (중복 등록 방지)
+    if (status === '등록완료') continue;
+
+    // 날짜나 제목이 비어 있는 행은 건너뜁니다
+    if (dateCell === '' || title === '') continue;
+
+    // E열 칸 위치 (i + 1 = 실제 행 번호, 5 = E열)
+    const statusCell = sheet.getRange(i + 1, 5);
+
+    // 날짜 형식으로 바꿉니다 (글자로 적힌 날짜도 처리)
+    const date = (dateCell instanceof Date) ? dateCell : new Date(dateCell);
+    if (isNaN(date.getTime())) {
+      statusCell.setValue('등록실패: 날짜 형식 오류');
+      failCount++;
+      continue;
+    }
+
+    try {
+      // 캘린더에 종일 일정을 만듭니다
+      // 제목: [채널] 콘텐츠 제목 / 설명: 담당자
+      calendar.createAllDayEvent(
+        '[' + channel + '] ' + title,
+        date,
+        { description: '담당자: ' + owner }
+      );
+
+      // 등록이 끝나면 E열에 '등록완료'라고 기록합니다
+      statusCell.setValue('등록완료');
+      successCount++;
+    } catch (error) {
+      // 오류가 나면 E열에 실패 이유를 기록합니다 (다음 실행 때 다시 시도됨)
+      statusCell.setValue('등록실패: ' + error.message);
+      failCount++;
+    }
+  }
+
+  // 결과를 알림창으로 보여줍니다
+  SpreadsheetApp.getUi().alert('캘린더 등록 완료\n성공 ' + successCount + '건, 실패 ' + failCount + '건');
+}

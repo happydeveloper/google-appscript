@@ -1,0 +1,97 @@
+/**
+ * 실습 3. 일일 지표 리포트 자동 발송
+ * ------------------------------------------------------------
+ * 시트: '일일지표' (1행 제목행)
+ *   A열 날짜 / B열 방문자수 / C열 신규가입 / D열 주문건수 / E열 매출 / F열 광고비
+ * 기능: 가장 최근 날짜의 행을 찾아 지표를 요약하고,
+ *       매출 대비 광고비 비율(%)을 계산해 내 주소로 메일 발송
+ *       날짜 데이터가 하나도 없으면 메일을 보내지 않고 종료
+ * 트리거: 실행할 함수 일일리포트 / 배포 Head / 이벤트 소스 '시간 기반' /
+ *         유형 '일 단위 타이머' / 시간 '오전 8시~9시' / 실패 알림 '매일 알림'
+ */
+
+// ==============================
+// ⚙️ 설정 영역
+// ==============================
+
+// 리포트를 받을 내 이메일 주소 (본인 주소로 바꿔서 사용)
+const REPORT_EMAIL = 'your-email@gmail.com';
+
+
+// ==============================
+// 📊 일일 지표 리포트 메일 보내기 (시간 기반 트리거로 매일 자동 실행)
+// ==============================
+function 일일리포트() {
+  // '일일지표' 시트를 가져옵니다
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('일일지표');
+  if (!sheet) {
+    Logger.log("'일일지표' 시트를 찾을 수 없어요.");
+    return;
+  }
+
+  // 시트의 모든 데이터를 한 번에 읽어옵니다
+  const data = sheet.getDataRange().getValues();
+
+  // 가장 최근 날짜와 그 행을 기억할 변수
+  let latestDate = null;
+  let latestRow = null;
+
+  // 1행은 제목행이므로 2행(i = 1)부터 확인합니다
+  for (let i = 1; i < data.length; i++) {
+    const cell = data[i][0]; // A열: 날짜
+
+    // 칸이 비어 있으면 건너뜁니다
+    if (cell === '' || cell === null) continue;
+
+    // 날짜 형식으로 바꿉니다 (글자로 적힌 날짜도 처리)
+    const date = (cell instanceof Date) ? cell : new Date(cell);
+
+    // 날짜로 읽을 수 없는 값이면 건너뜁니다
+    if (isNaN(date.getTime())) continue;
+
+    // 지금까지 찾은 날짜보다 더 최근이면 이 행을 기억합니다
+    if (latestDate === null || date > latestDate) {
+      latestDate = date;
+      latestRow = data[i];
+    }
+  }
+
+  // 날짜 데이터가 하나도 없으면 메일을 보내지 않고 끝냅니다
+  if (latestRow === null) {
+    Logger.log('날짜 데이터가 없어서 메일을 보내지 않았어요.');
+    return;
+  }
+
+  // 최근 날짜 행의 값들을 꺼냅니다 (숫자로 변환)
+  const visitors = Number(latestRow[1]) || 0; // B열: 방문자수
+  const signups  = Number(latestRow[2]) || 0; // C열: 신규가입
+  const orders   = Number(latestRow[3]) || 0; // D열: 주문건수
+  const revenue  = Number(latestRow[4]) || 0; // E열: 매출
+  const adCost   = Number(latestRow[5]) || 0; // F열: 광고비
+
+  // 매출 대비 광고비 비율(%)을 계산합니다 (매출이 0이면 나눌 수 없으므로 따로 처리)
+  const adRatio = revenue > 0
+    ? (adCost / revenue * 100).toFixed(1) + '%'
+    : '계산 불가 (매출 0)';
+
+  // 날짜를 '2026-10-30' 형식으로 바꿉니다
+  const dateText = Utilities.formatDate(latestDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+
+  // 숫자에 천 단위 쉼표를 붙여주는 도우미
+  const fmt = n => n.toLocaleString('ko-KR');
+
+  // 메일 제목과 본문을 만듭니다
+  const subject = '[일일 리포트] ' + dateText + ' 지표 요약';
+  const body =
+    dateText + ' 일일 지표 요약입니다.\n\n' +
+    '방문자수: ' + fmt(visitors) + '명\n' +
+    '신규가입: ' + fmt(signups) + '명\n' +
+    '주문건수: ' + fmt(orders) + '건\n' +
+    '매출: ' + fmt(revenue) + '원\n' +
+    '광고비: ' + fmt(adCost) + '원\n' +
+    '매출 대비 광고비 비율: ' + adRatio;
+
+  // 내 주소로 메일을 보냅니다
+  MailApp.sendEmail(REPORT_EMAIL, subject, body);
+  Logger.log('리포트 발송 완료: ' + dateText);
+}
